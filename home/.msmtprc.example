@@ -1,0 +1,9 @@
+account         default
+auth            on
+tls             on
+host            smtp.example.com
+port            25
+tls_starttls    on
+from            backuppc@example.com
+user            backuppc
+password        p@s$W0rD
