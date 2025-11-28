@@ -1,0 +1,70 @@
+services:
+  app:
+    image: adferrand/backuppc:4
+    restart: always
+    labels:
+      - traefik.http.routers.web.rule=Host(`${BACKUPPC_DOMAIN}`)
+      - traefik.enable=true
+      - traefik.http.routers.web.tls.certresolver=le
+    volumes:
+      - ${BACKUPPC_ETC_PATH}:/etc/backuppc
+      - ${BACKUPPC_HOME_PATH}:/home/backuppc
+      - ${BACKUPPC_DATA_PATH}:/data/backuppc
+
+    environment:
+      - BACKUPPC_WEB_USER=${BACKUPPC_WEB_USER}
+      - BACKUPPC_WEB_PASSWD=${BACKUPPC_WEB_PASSWD}
+      - TZ=${TIMEZONE}
+
+  proxy:
+    image: traefik:v3.1
+    restart: always
+    command:
+      - --api.dashboard=true
+      - --providers.docker.network=proxy
+      - --providers.docker.exposedbydefault=false
+      - --providers.docker.endpoint=tcp://socket-proxy:2375
+      - --entryPoints.web.address=:80
+      - --entryPoints.web.http.redirections.entryPoint.to=websecure
+      - --entryPoints.websecure.address=:443
+      - --certificatesresolvers.le.acme.httpchallenge.entrypoint=web
+      - --certificatesresolvers.le.acme.email=${ADMIN_EMAIL}
+      - --certificatesresolvers.le.acme.storage=/letsencrypt/acme.json
+      - --accesslog=true
+    ports:
+      - 80:80
+      - 443:443
+    volumes:
+      - letsencrypt:/letsencrypt
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.traefik.entrypoints=websecure
+      - traefik.http.routers.traefik.rule=Host(`${TRAEFIK_HOSTNAME}`)
+      - traefik.http.routers.traefik.tls.certresolver=le
+      - traefik.http.routers.traefik.service=api@internal
+      - traefik.http.routers.traefik.middlewares=auth_user
+      - traefik.http.middlewares.auth_user.basicauth.users=${TRAEFIK_ADMIN}
+    networks:
+      - proxy
+      - default
+      - socket
+
+  socket-proxy:
+    image: lscr.io/linuxserver/socket-proxy:latest
+    environment:
+      - CONTAINERS=1 #required by traefik
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /run
+    networks:
+      - socket
+
+volumes:
+  letsencrypt:
+
+networks:
+  proxy:
+  socket:
